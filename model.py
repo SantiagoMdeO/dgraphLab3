@@ -54,11 +54,11 @@ def set_schema(client):
         user_follows_track
     }
 
-    username: string @index(trigram) .
+    username: string @index(exact, trigram) @unique .
     followers: int .
     monthly_listeners: int .
 
-    name: string @index(trigram) .
+    name: string @index(exact, trigram) @unique .
     release_date: datetime .
     genre: string @index(hash) .
     duration: float .
@@ -125,30 +125,36 @@ def send_albums_to_dgraph(client):
     albums = []
     
     # Step 1: Read the CSV file
-    with open("./csv_files/tracks.csv", "r") as file:
+    with open("./csv_files/albums.csv", "r") as file:
         reader = csv.DictReader(file)
+        
         for row in reader:
             album_name = row["name"]
             release_date = row["release_date"]
             genre = row["genre"]
-            album_tracks = row["album_has_track"].strip("[]").split("-")
+            album_tracks = row["album_has_track"].strip("[]").split("+")
+           
             
             # Step 2: Query Dgraph for track UIDs
+            
             track_uids = []
             for track_name in album_tracks:
                 tracks = query_track_by_name(client, track_name.strip())
                 if tracks:
                     track_uids.append(tracks[0]["uid"])  # Get UID of the first match (assuming unique names)
             
+            
             # Step 3: Create album mutation data
             album_data = {
-                "dgraph.type": "Track",
+                "dgraph.type": "Album",
                 "uid": "_:new_album",  # Blank node for new album
                 "name": album_name,
                 "release_date": release_date,
                 "genre": genre,
                 "album_has_track": track_uids  # Link tracks to the album via UIDs
             }
+            
+            
             albums.append(album_data)
     
     # Step 4: Send mutations to Dgraph
@@ -267,9 +273,12 @@ def query_track_by_name(client, track_name):
         }
     }
     """
+    
     variables = {"$name": track_name}
     response = client.txn(read_only=True).query(query, variables=variables)
-    data = response.json()
+    data = json.loads(response.json)
+    
+    # Return the tracks from the response
     return data.get("tracks", [])
 
 
