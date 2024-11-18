@@ -38,8 +38,10 @@ def main():
     client_stub = create_client_stub()
     client = create_client(client_stub)
 
-    # Create schema
+    # Create schema ---------------------creating sequence every time we start
+    model.drop_all(client) #drop all so schema can execute correctly
     model.set_schema(client)
+    model.send_tracks_to_dgraph(client)
 
     while(True):
         print_menu()

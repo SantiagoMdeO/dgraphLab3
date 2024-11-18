@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import datetime
 import json
+import csv
+
 
 import pydgraph
 
@@ -8,23 +10,114 @@ import pydgraph
 
 def set_schema(client):
     schema = """
-    type Person {
-        name
-        friend
-        age
-        married
-        location
-        dob
+    type Artist {
+        username
+        followers
+        monthly_listeners
+        artist_has_album
+        artist_has_track
     }
 
-    name: string @index(exact) .
-    friend: [uid] @reverse .
+    type Album {
+        name
+        release_date
+        genre
+        album_has_track
+    }
+
+    type Track {
+        name
+        duration
+        play_count
+        popularity_score
+        creation_date
+    }
+
+    type Playlist {
+        name
+        description
+        followers
+        creation_date
+        playlist_has_song
+        playlist_has_album
+        playlist_has_artist
+    }
+
+    type User {
+        username
+        email
+        age
+        location
+        subscription_type
+        follow_user
+        follow_playlist
+        user_follows_track
+    }
+
+    username: string @index(trigram) .
+    followers: int .
+    monthly_listeners: int .
+
+    name: string @index(trigram) .
+    release_date: datetime .
+    genre: string @index(hash) .
+    duration: float .
+    play_count: int .
+    popularity_score: float .
+    description: string .
+    creation_date: datetime .
+    email: string @index(exact) .
     age: int .
-    married: bool .
     location: geo .
-    dob: datetime .
+    subscription_type: string .
+
+    follow_user: [uid] .
+    follow_playlist: [uid] @reverse .
+    user_follows_track: [uid] .
+    playlist_has_song: [uid] .
+    playlist_has_album: [uid] .
+    playlist_has_artist: [uid] .
+    album_has_track: [uid] .
+    artist_has_album: [uid] .
+    artist_has_track: [uid] .
+
     """
     return client.alter(pydgraph.Operation(schema=schema))
+
+def send_tracks_to_dgraph(client):
+    try:
+        with open("./csv_files/tracks.csv", 'r') as file:
+            reader = csv.DictReader(file)
+            
+            # Prepare mutations for each track
+            mutations = []
+            for row in reader:
+                mutation = {
+                    "uid": "_:new_track",
+                    "name": row["name"],
+                    "duration": float(row["duration"]),
+                    "play_count": int(row["play_count"]),
+                    "popularity_score": float(row["popularity_score"]),
+                    "creation_date": row["creation_date"],
+                }
+                mutations.append(mutation)
+            
+            # Create a new transaction.
+            txn = client.txn()
+            
+            try:
+                for mutation in mutations:
+                    txn.mutate(set_obj=mutation)
+
+                #commit transaction
+                commit_response = txn.commit()
+                print(f"Commit Response: {commit_response}")
+            finally:
+                txn.discard()
+    except Exception as e:
+        print(f"An error occurred: {e}")
+    finally:
+        txn.discard()
 
 
 def create_data(client):
