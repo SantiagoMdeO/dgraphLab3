@@ -67,7 +67,7 @@ def set_schema(client):
     description: string .
     creation_date: datetime .
     email: string @index(exact) .
-    age: int .
+    age: int @index(int) .
     location: geo .
     subscription_type: string .
 
@@ -166,6 +166,7 @@ def send_albums_to_dgraph(client):
         print(f"Successfully added {len(albums)} albums to Dgraph.")
     finally:
         txn.discard()
+
 
 def create_data(client):
     # Create a new transaction.
@@ -280,6 +281,87 @@ def query_track_by_name(client, track_name):
     
     # Return the tracks from the response
     return data.get("tracks", [])
+
+def query_album_by_name(client, album_name):
+    query = """
+    query AlbumQuery($name: string) {
+        albums(func: eq(name, $name)) {
+            uid
+            name
+            release_date
+            genre
+        }
+    }
+    """
+    
+    variables = {"$name": album_name}
+    print("Running query for album:", album_name)
+    
+    # Perform the query
+    response = client.txn(read_only=True).query(query, variables=variables)
+    data = json.loads(response.json)
+    return data.get("albums", [])
+
+def query_by_age(client, age):
+    query = """
+    query SearchByAge($age: int) {
+        all(func: eq(age, $age)) {
+            uid
+            name
+            age
+        }
+    }
+    """
+    variables = {"$age": age}
+    response = client.txn(read_only=True).query(query, variables=variables)
+    data = json.loads(response.json)
+    return data.get("all", [])
+
+def query_reversed_relationship(client, playlist_name):
+    query = """
+    query ReversedFollowPlaylist($name: string) {
+        playlists(func: eq(name, $name)) {
+            name
+            follow_playlist {
+                name
+            }
+        }
+    }
+    """
+    variables = {"$name": playlist_name}
+    response = client.txn(read_only=True).query(query, variables=variables)
+    data = json.loads(response.json)
+    return data.get("playlists", [])
+
+def query_track_count(client):
+    query = """
+    query TrackCount {
+        tracks(func: has(name)) {
+            count(uid)
+        }
+    }
+    """
+    response = client.txn(read_only=True).query(query)
+    data = json.loads(response.json)
+    return data.get("tracks", [])
+
+def delete_person_by_name(client, name):
+    txn = client.txn()
+    try:
+        query = """query search_person($a: string) {
+            all(func: eq(name, $a)) {
+                uid
+            }
+        }"""
+        variables = {'$a': name}
+        result = txn.query(query, variables=variables)
+        ppl = json.loads(result.json)
+        for person in ppl['all']:
+            txn.mutate(del_obj=person)
+        txn.commit()
+        print(f"Deleted person: {name}")
+    finally:
+        txn.discard()
 
 
 def drop_all(client):
