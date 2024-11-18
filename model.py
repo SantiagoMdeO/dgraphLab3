@@ -7,7 +7,7 @@ import csv
 import pydgraph
 
 
-
+#schema baby
 def set_schema(client):
     schema = """
     type Artist {
@@ -84,6 +84,8 @@ def set_schema(client):
     """
     return client.alter(pydgraph.Operation(schema=schema))
 
+
+#sending to dgraph
 def send_tracks_to_dgraph(client):
     try:
         with open("./csv_files/tracks.csv", 'r') as file:
@@ -93,6 +95,7 @@ def send_tracks_to_dgraph(client):
             mutations = []
             for row in reader:
                 mutation = {
+                    "dgraph.type": "Track", #this is something chat refuses to add
                     "uid": "_:new_track",
                     "name": row["name"],
                     "duration": float(row["duration"]),
@@ -104,7 +107,7 @@ def send_tracks_to_dgraph(client):
             
             # Create a new transaction.
             txn = client.txn()
-            
+
             try:
                 for mutation in mutations:
                     txn.mutate(set_obj=mutation)
@@ -118,7 +121,45 @@ def send_tracks_to_dgraph(client):
         print(f"An error occurred: {e}")
     finally:
         txn.discard()
-
+def send_albums_to_dgraph(client):
+    albums = []
+    
+    # Step 1: Read the CSV file
+    with open("./csv_files/tracks.csv", "r") as file:
+        reader = csv.DictReader(file)
+        for row in reader:
+            album_name = row["name"]
+            release_date = row["release_date"]
+            genre = row["genre"]
+            album_tracks = row["album_has_track"].strip("[]").split("-")
+            
+            # Step 2: Query Dgraph for track UIDs
+            track_uids = []
+            for track_name in album_tracks:
+                tracks = query_track_by_name(client, track_name.strip())
+                if tracks:
+                    track_uids.append(tracks[0]["uid"])  # Get UID of the first match (assuming unique names)
+            
+            # Step 3: Create album mutation data
+            album_data = {
+                "dgraph.type": "Track",
+                "uid": "_:new_album",  # Blank node for new album
+                "name": album_name,
+                "release_date": release_date,
+                "genre": genre,
+                "album_has_track": track_uids  # Link tracks to the album via UIDs
+            }
+            albums.append(album_data)
+    
+    # Step 4: Send mutations to Dgraph
+    txn = client.txn()
+    try:
+        for album in albums:
+            txn.mutate(set_obj=album)
+        txn.commit()
+        print(f"Successfully added {len(albums)} albums to Dgraph.")
+    finally:
+        txn.discard()
 
 def create_data(client):
     # Create a new transaction.
@@ -184,7 +225,7 @@ def delete_person(client, name):
     finally:
         txn.discard()
 
-
+#example
 def search_person(client, name):
     query = """query search_person($a: string) {
         all(func: eq(name, $a)) {
@@ -211,6 +252,25 @@ def search_person(client, name):
     # Print results.
     print(f"Number of people named {name}: {len(ppl['all'])}")
     print(f"Data associated with {name}:\n{json.dumps(ppl, indent=2)}")
+
+#actual queries
+def query_track_by_name(client, track_name):
+    query = """
+    query TrackQuery($name: string) {
+        tracks(func: eq(name, $name)) {
+            uid
+            name
+            duration
+            play_count
+            popularity_score
+            creation_date
+        }
+    }
+    """
+    variables = {"$name": track_name}
+    response = client.txn(read_only=True).query(query, variables=variables)
+    data = response.json()
+    return data.get("tracks", [])
 
 
 def drop_all(client):

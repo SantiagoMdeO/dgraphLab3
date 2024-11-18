@@ -42,6 +42,7 @@ def main():
     model.drop_all(client) #drop all so schema can execute correctly
     model.set_schema(client)
     model.send_tracks_to_dgraph(client)
+    model.send_albums_to_dgraph(client)
 
     while(True):
         print_menu()
